@@ -255,3 +255,174 @@ cpdef void _csr_polynomial_expansion(
 
             result_indptr[row_i+1] = result_indptr[row_i] + num_cols_in_row
     return
+
+
+# cpdef
+# void
+# my_csr_polynomial_expansion(
+#     const
+# DATA_t[:]
+# data,  # IN READ-ONLY
+# const
+# INDEX_A_t[:]
+# indices,  # IN READ-ONLY
+# const
+# INDEX_A_t[:]
+# indptr,  # IN READ-ONLY
+# INDEX_A_t
+# n_features,
+# INDEX_A_t
+# n_categories,
+# DATA_t[:]
+# result_data,  # OUT
+# INDEX_B_t[:]
+# result_indices,  # OUT
+# INDEX_B_t[:]
+# result_indptr,  # OUT
+# FLAG_t
+# interaction_only,
+# FLAG_t
+# degree,
+# INDEX_A_t[:, :]
+# column_pairs  # NEW PARAMETER: pointer to 2D array
+# ) nogil:
+# """
+# ... [rest of the docstring] ...
+# """
+# # Make the arrays that will form the CSR matrix of the expansion.
+# cdef
+# INDEX_A_t
+# row_i, row_starts, row_ends, i, j, k, i_ptr, j_ptr, k_ptr
+# cdef
+# INDEX_B_t
+# expanded_index = 0, num_cols_in_row, col
+# cdef
+# int
+# pair_idx
+# with nogil:
+#     result_indptr[0] = indptr[0]
+#     for row_i in range(indptr.shape[0] - 1):
+#         row_starts = indptr[row_i]
+#         row_ends = indptr[row_i + 1]
+#         num_cols_in_row = 0
+# 
+#         # Iterate over the provided column pairs
+#         for pair_idx in range(column_pairs.shape[0]):
+#             i = column_pairs[pair_idx, 0]
+#             j = column_pairs[pair_idx, 1]
+#             i_ptr, j_ptr = _find_index(indices, row_starts, row_ends, i, j)
+#             # j_ptr = _find_index(indices, row_starts, row_ends, j)
+# 
+#             # Check if both columns have non-zero elements in the current row
+#             if i_ptr != -1 and j_ptr != -1:
+#                 col = < INDEX_B_t > _deg2_column_my(
+#                     n_categories,
+#                     i, j,
+#                     interaction_only
+#                 )
+#                 result_indices[expanded_index] = col
+#                 result_data[expanded_index] = (
+#                         data[i_ptr] * data[j_ptr]
+#                 )
+#                 expanded_index += 1
+#                 num_cols_in_row += 1
+# 
+#         result_indptr[row_i + 1] = result_indptr[row_i] + num_cols_in_row
+# return
+# 
+# cpdef(int, int)
+# _find_index(const
+# INDEX_A_t[:]
+# indices, int
+# start, int
+# end, int
+# target_i, int
+# target_j) nogil:
+# """
+# Helper function to find the index of a target value in a slice of the indices array.
+# Returns -1 if the target is not found.
+# """
+# cdef
+# int
+# idx, i_idx = -1, j_idx = -1
+# for idx from start <= idx < end:
+#     if indices[idx] == target_i:
+#         i_idx = idx
+#     if indices[idx] == target_j:
+#         j_idx = idx
+# return i_idx, j_idx
+
+
+def my_calc_expanded_nnz_deg2(n1, n2, interaction_only):
+    return n1 * (n2 + 1) - interaction_only * (n1 + n2 - 1)
+cdef inline int64_t _deg2_column_my(
+    LARGEST_INT_t n_categories,
+    LARGEST_INT_t i,
+    LARGEST_INT_t j,
+    FLAG_t interaction_only
+) nogil:
+    """Compute the index of the column for a degree 2 expansion
+
+    n_features is the dimensionality of the input data, i and j are the indices
+    for the columns involved in the expansion.
+    """
+    if interaction_only:
+        return i + (j-n_categories+1)*(n_categories-1)
+    else:
+        return -1 # not implmemented
+cpdef void my_csr_polynomial_expansion(
+    const DATA_t[:] data,           # IN READ-ONLY
+    const INDEX_A_t[:] indices,     # IN READ-ONLY
+    const INDEX_A_t[:] indptr,      # IN READ-ONLY
+    INDEX_A_t n_features,
+    INDEX_A_t n_categories,
+    DATA_t[:] result_data,          # OUT
+    INDEX_B_t[:] result_indices,    # OUT
+    INDEX_B_t[:] result_indptr,     # OUT
+    FLAG_t interaction_only,
+    FLAG_t degree,
+    INDEX_A_t[:, :] column_pairs   # NEW PARAMETER: pointer to 2D array
+) nogil:
+    """
+    ... [rest of the docstring] ...
+    """
+    # Make the arrays that will form the CSR matrix of the expansion.
+    cdef INDEX_A_t row_i, row_starts, row_ends, i, j, k, i_ptr, j_ptr, k_ptr
+    cdef INDEX_B_t expanded_index=0, num_cols_in_row, col
+    cdef int pair_idx
+    with nogil:
+        result_indptr[0] = indptr[0]
+        for row_i in range(indptr.shape[0]-1):
+            row_starts = indptr[row_i]
+            row_ends = indptr[row_i + 1]
+            num_cols_in_row = 0
+            
+            # Iterate over the provided column pairs
+            for pair_idx in range(column_pairs.shape[0]):
+                i = column_pairs[pair_idx, 0]
+                j = column_pairs[pair_idx, 1]
+                #i_ptr, j_ptr = _find_index(indices, row_starts, row_ends, i,j)
+                #j_ptr = _find_index(indices, row_starts, row_ends, j)
+                i_ptr = -1
+                j_ptr=-1
+                for idx in range(row_starts, row_ends):
+                            if indices[idx] == i:
+                                i_ptr = idx
+                            if indices[idx] == j:
+                                j_ptr = idx
+                # Check if both columns have non-zero elements in the current row
+                if i_ptr != -1 and j_ptr != -1:
+                    col = <INDEX_B_t> _deg2_column_my(
+                        n_categories,
+                        i, j,
+                        interaction_only
+                    )
+                    result_indices[expanded_index] = col
+                    result_data[expanded_index] = (
+                        data[i_ptr] * data[j_ptr]
+                    )
+                    expanded_index += 1
+                    num_cols_in_row += 1
+
+            result_indptr[row_i+1] = result_indptr[row_i] + num_cols_in_row
+    return
